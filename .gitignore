@@ -1,1 +1,4 @@
+kube-watch-diff
 kubectl-watch
+dist
+.chglog

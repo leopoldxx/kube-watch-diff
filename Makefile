@@ -17,6 +17,8 @@ OUTPUT := .
 
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
+GOPATH ?= $(shell go env GOPATH)
+GOBIN ?= $(GOPATH)/bin
 BUILDARG ?=
 
 BUILDTIME := $(shell date '+%Y%m%d-%H%M%S')
@@ -38,7 +40,7 @@ binary: $(NAME)
 
 .PHONY: $(NAME)
 $(NAME):
-	go build $(BUILDARG) -o ${OUTPUT}/${NAME} -ldflags '$(LDFLAGS)' ./main.go
+	go build $(BUILDARG) -trimpath -o ${OUTPUT}/${NAME} -ldflags '$(LDFLAGS)' ./main.go
 
 .PHONY: fmt
 fmt:
@@ -49,5 +51,17 @@ vet:
 	go vet $(BUILDARG) ./...
 
 .PHONY: lint
-lint:
-	golangci-lint run ./...
+lint: golangci-lint
+	${LINT} run ./...
+
+.PHONY: golangci-lint
+golangci-lint:
+ifeq (, $(shell which golangci-lint))
+	 @{ \
+		set -e ;\
+		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOPATH)/bin v1.34.1 ;\
+	}
+LINT=$(GOBIN)/golangci-lint
+else
+LINT=$(shell which golangci-lint)
+endif

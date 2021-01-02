@@ -76,6 +76,9 @@ kubectl watch all -l far=bar -n test-ns
 
 # watch all masters
 kubectl watch node -l node-role.kubernetes.io/master=""
+
+# watch all nodes, and record the diff into a file
+kubectl-watch nodes --all 2>/dev/null | tee nodes.diff
 `
 
 var (
@@ -86,11 +89,11 @@ var (
 	BuildTime string
 )
 
-func ShowVersion() {
+func ShowVersion(w io.Writer) {
 	if Version == "" {
 		return
 	}
-	fmt.Printf(`build time: %s
+	fmt.Fprintf(w, `build time: %s
 %s: %s
 %s
 git: %s, %s
@@ -158,7 +161,7 @@ func (options *watchDiffOptions) ToCommand(args []string) (*watchDiffCommand, er
 	}
 	effectiveTimeout := options.Timeout
 	if effectiveTimeout <= 0 {
-		effectiveTimeout = 10 * time.Minute
+		effectiveTimeout = time.Hour
 	}
 	o := &watchDiffCommand{
 		ResourceFinder: builder,
@@ -202,13 +205,13 @@ func newWatchDiffCommand(streams genericclioptions.IOStreams) *cobra.Command {
 		Long:    longDesc,
 		Example: examples,
 		Run: func(cmd *cobra.Command, args []string) {
-			ShowVersion()
+			ShowVersion(streams.ErrOut)
 			if showVersion {
 				return
 			}
+			_, _ = fmt.Fprintln(streams.ErrOut, logo)
 			wdcmd, err := options.ToCommand(args)
 			cmdutil.CheckErr(err)
-			_, _ = fmt.Fprintln(wdcmd.Out, logo)
 			err = wdcmd.Run(cmd.Context())
 			cmdutil.CheckErr(err)
 		},
@@ -249,7 +252,12 @@ func (o *watchDiffCommand) Run(ctx context.Context) error {
 				},
 			)
 
-			dobj := diffobj{namespace: info.Namespace, name: info.Name, output: o.Out}
+			dobj := diffobj{
+				resource:  info.Mapping.Resource.Resource,
+				namespace: info.Namespace,
+				name:      info.Name,
+				output:    o.Out,
+			}
 			informer := f.ForResource(info.Mapping.Resource)
 			informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 				AddFunc: func(obj interface{}) {
@@ -262,13 +270,18 @@ func (o *watchDiffCommand) Run(ctx context.Context) error {
 					dobj.diffWithPrevious(obj)
 				},
 			})
-			if info.Namespaced() {
-				fmt.Fprintf(o.Out, "start watch the diff of %v: %s/%s @Now=%s\n",
-					info.Mapping.Resource.Resource, info.Namespace, info.Name, time.Now())
-			} else {
-				fmt.Fprintf(o.Out, "start watch the diff of %v: %s @Now=%s\n",
-					info.Mapping.Resource.Resource, info.Name, time.Now())
-			}
+			fmt.Fprintf(
+				o.ErrOut,
+				"start watching the diff of %s on %s @Now=%s\n",
+				info.Mapping.Resource.Resource,
+				func() string {
+					if info.Namespace != "" {
+						return info.Namespace + "/" + info.Name
+					}
+					return info.Name
+				}(),
+				time.Now(),
+			)
 			informer.Informer().Run(ctx.Done())
 		}()
 		return nil
@@ -281,6 +294,7 @@ func (o *watchDiffCommand) Run(ctx context.Context) error {
 }
 
 type diffobj struct {
+	resource   string
 	namespace  string
 	name       string
 	output     io.Writer
@@ -288,11 +302,17 @@ type diffobj struct {
 	baseYAML   string
 }
 
-func (o *diffobj) namespacename() string {
+func (o *diffobj) fileName() string {
+	return o.formatName("_")
+}
+func (o *diffobj) labelName() string {
+	return o.formatName("/") + ".yaml"
+}
+func (o *diffobj) formatName(sep string) string {
 	if o.namespace == "" {
-		return o.name
+		return o.resource + sep + o.name // cluster scoped resource
 	}
-	return o.namespace + "_" + o.name
+	return o.resource + sep + o.namespace + sep + o.name // namespace scoped resource
 }
 
 func (o *diffobj) diffWithPrevious(obj interface{}) {
@@ -321,12 +341,20 @@ func (o *diffobj) diffWithPrevious(obj interface{}) {
 
 var script = `
 #! /bin/bash
-DIFF=diff; type colordiff &>/dev/null && DIFF=colordiff
-${DIFF} -ruwN %s %s
+oldFile=%s
+oldFileLabel=%s
+newFile=%s
+newFileLabel=%s
+
+type colordiff &>/dev/null && {
+	colordiff -ruwN --color-term-output-only=yes ${oldFile} --label old/${oldFileLabel} ${newFile} --label new/${newFileLabel}
+	exit 0
+}
+diff -ruwN ${oldFile} --label old/${oldFileLabel} ${newFile} --label new/${newFileLabel}
 `
 
 func (o *diffobj) diff(left, right string) error {
-	file, err := ioutil.TempFile("/tmp/", o.namespacename()+".yaml-")
+	file, err := ioutil.TempFile("", o.fileName()+".yaml-")
 	if err != nil {
 		return err
 	}
@@ -339,7 +367,7 @@ func (o *diffobj) diff(left, right string) error {
 		return err
 	}
 
-	file2, err := ioutil.TempFile("/tmp/", o.namespacename()+".yaml-")
+	file2, err := ioutil.TempFile("", o.fileName()+".yaml-")
 	if err != nil {
 		return err
 	}
@@ -352,8 +380,18 @@ func (o *diffobj) diff(left, right string) error {
 		return err
 	}
 
-	fmt.Fprintf(o.output, "# Now: %v\n", time.Now())
-	formattedScript := fmt.Sprintf(script, file.Name(), file2.Name())
+	if o.namespace != "" {
+		fmt.Fprintf(o.output, "# Resource: kubectl get %s -oyaml -n %s %s @ %v\n", o.resource, o.namespace, o.name, time.Now())
+	} else {
+		fmt.Fprintf(o.output, "# Resource: kubectl get %s -oyaml %s @ %v\n", o.resource, o.name, time.Now())
+	}
+	formattedScript := fmt.Sprintf(
+		script,
+		file.Name(),
+		o.labelName(),
+		file2.Name(),
+		o.labelName(),
+	)
 	cmd := exec.Command("bash", "-c", formattedScript)
 	cmd.Stdout = o.output
 	cmd.Stderr = o.output

@@ -10,11 +10,17 @@ ____    __    ____  ___   .___________.  ______  __    __                 ______
 
 # Notes
 
-A kubectl plugin for watching resource diff.
+A kubectl plugin for watching resources and generating diffs.
 
 If you want to watch multiple objects, and some of them are namespace-scoped, then they must be in the same namespace.
 
-As a kubectl plugin, you could call this command like 'kubectl watch', only if you install kubectl-watch into system PATH.
+# Prerequisite
+
+This tool need `diff` utility for files comparison, so make sure `diffutils` has already been installed.
+> GNU Diffutils: https://www.gnu.org/software/diffutils/
+
+If you want a colorful output, you can install `colordiff` wrapper for `diff` tool.
+> Colordiff: https://www.colordiff.org/
 
 # Usage
 
@@ -43,4 +49,8 @@ kubectl watch all -l far=bar -n test-ns
 ```shell
 # watch all masters
 kubectl watch node -l node-role.kubernetes.io/master=""
+```
+```shell
+# watch all nodes, and record the diffs into a file
+kubectl-watch nodes --all 2>/dev/null | tee nodes.diff
 ```
