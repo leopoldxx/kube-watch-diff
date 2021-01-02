@@ -22,6 +22,11 @@ This tool need `diff` utility for files comparison, so make sure `diffutils` has
 If you want a colorful output, you can install `colordiff` wrapper for `diff` tool.
 > Colordiff: https://www.colordiff.org/
 
+# Install
+
+1. You can download the latest release version from:
+    > https://github.com/leopoldxx/kube-watch-diff/releases
+
 # Usage
 
 You could use it like the examples below（install as kubectl plugin):
@@ -41,6 +46,11 @@ kubectl watch nodes/node1  pods/pod1 pods/pod2
 ```shell
 # watch multiple resources using a label selector
 kubectl watch pods -l far=bar
+kubectl watch deployment,rs -l far=bar
+```
+```shell
+# watch all pods on the same node
+kubectl watch pods --field-selector spec.nodeName=192.168.1.1
 ```
 ```shell
 # watch 'all' category resource using label selector
