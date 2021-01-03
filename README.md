@@ -24,8 +24,11 @@ If you want a colorful output, you can install `colordiff` wrapper for `diff` to
 
 # Install
 
-1. You can download the latest release version from:
+1. You can download the release package manually:
     > https://github.com/leopoldxx/kube-watch-diff/releases
+
+2.  Or, install using the installation script:
+    > curl -sfL https://raw.githubusercontent.com/leopoldxx/kube-watch-diff/master/install.sh | sh -s -- -b /usr/bin
 
 # Usage
 
