@@ -3,3 +3,4 @@ kubectl-watch
 dist
 .chglog
 .goreleaser.yml
+bin

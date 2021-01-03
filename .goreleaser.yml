@@ -1,0 +1,45 @@
+project_name: kubectl-watch
+before:
+  hooks:
+    - go mod download
+builds:
+  - binary: kubectl-watch
+    main: ./main.go
+    ldflags:
+      - -s -w
+      - -X "main.Version={{.Version}}"
+      - -X "main.GoVersion={{.Env.GOVERSION}}"
+      - -X "main.Branch={{.Branch}}"
+      - -X "main.Commit={{.ShortCommit}}"
+      - -X "main.BuildTime={{.Date}}"
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+archives:
+  - replacements:
+      darwin: Darwin
+      linux: Linux
+      amd64: x86_64
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}"
+release:
+  draft: true
+  prerelease: auto
+  name_template: "{{.ProjectName}}-v{{.Version}} {{.Env.USER}}"
+  #disable: true
+changelog:
+  sort: desc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^style:'

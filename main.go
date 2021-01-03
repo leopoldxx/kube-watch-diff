@@ -107,10 +107,12 @@ git: %s, %s
 
 var onlyOneSignalHandler = make(chan struct{})
 
+const maxSignalChanLen = 2
+
 func setupSignalHandler() (stopCh <-chan struct{}) {
 	close(onlyOneSignalHandler)
 	stop := make(chan struct{})
-	c := make(chan os.Signal, 2)
+	c := make(chan os.Signal, maxSignalChanLen)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-c
